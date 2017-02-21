@@ -60,9 +60,9 @@
 					<script type="text/template">
 						### 主要差异
 
-						1. Koa 2 用 ES6 重写了整个代码，主要用到了 `arrow function`, `promise`, `let const`, `template string`, `class` 等特性。
+						1. Koa 2 用 ES6 重写了整个代码，主要用到了 `arrow function`  `promise`  `let const`  `template string`  `class` 等特性。
 
-						2. 在 1.0 时候 koa 需要依赖 co 结合 generator 实现 stack like 式的 middleware 功能, 2.0 移除了对 co 的依赖, 改使用 async/await 实现
+						2. 在 1.0 时候 koa 需要依赖 co 结合 generator 实现类栈（stack like）式的 middleware 功能, 2.0 移除了对 co 的依赖, 改使用 async/await 实现
 
 						--
 
@@ -124,6 +124,24 @@
 							后者是一个方法, 调用后开始执行后续中间件并返回一个 promise 对象, 该对象 resolve 后表示后续 middleware 执行完成, 可以在它的 then callback 中执行一些操作.
 
 							另外一个区别为在 1.0 中, middleware 的 this 代表当次请求的 context, 而在 2.0 中需要通过参数 ctx 获取.
+
+							————————
+							这里总结下 middleware 的执行流程, koa 的 middelware 组织及运行方式同 django 类似, 请求先到达时先经过一层层中间件处理进到最里层，然后再反向一层层流出.
+
+
+
+							这里总结下 koa 的中间件执行顺序:
+
+							1. 请求进入时按照 middleware 的挂载顺序执行, 出来时按照相反的顺序执行
+
+							2. next 方法不能执行多次
+
+							3. next 方法如果不执行, 其后加载的中间件都无效
+
+							4. koa 自动在用户挂载的中间件之后添加了一个 respond 中间件, 为事实上的最终中间件, 用于处理响应数据.
+
+							5. 某个 middleware 如果 return 了数据, 其将会作为上一个中间件 next() resolve回调的参数
+
 						</aside>
 					</section>
 				</section>
@@ -135,12 +153,17 @@
 
 						2. 框架本身很轻量化，方便引入其他中间件。
 
-						3. (1) express的设计是串联的，简单的利用中间件传递控制权，设计思路超级简洁。
+						3. (1) express的设计是串联的，简单的利用中间件来传递控制权。
 							 
-							 (2) 在Koa中，通过级联(Cascading)的执行方式处理流程，
+							 (2) Koa 通过级联(Cascading)的执行方式处理流程，中间件层层调用。
 
 						<aside class="notes" data-markdown>
-        			用户请求通过中间件，遇到 yield next 语句时，会暂停执行当前中间件的剩余代码，请求被传递到下一个符合要求的路由，并直到 yield next 捕获不到下一个中间件时。逆序返回执行。
+        			
+        			用户请求通过中间件，遇到 yield next 
+
+        			语句时，会暂停执行当前中间件的剩余代码，请求被传递到下一个符合要求的路由，并直到 yield next 
+        			
+        			捕获不到下一个中间件时。逆序返回执行。
     				</aside>
 					</script>
 				</section>
@@ -149,14 +172,20 @@
 						### 流程梳理
 						
 						``` js
-							app.use(async (ctx, next) => {
-								// 首先启动第一个中间件，记录时间
-							  const start = new Date;
-							  // 进入中间件，等待返回。
-							  await next();
+							app.use(function *(next){
+							  // 首先启动第一个中间件，记录下时间
+							  var start = new Date;
+							  // 进入中间件，并等待返回。
+							  yield next;
 							  // 返回后，操作已完成，记录结束时间并输出。
-							  const ms = new Date - start;
-							  console.log(`${ctx.method} ${ctx.url} - ${ms}ms`);
+							  var ms = new Date - start;
+							  this.set('X-Response-Time', ms + 'ms');
+							});
+
+							// response
+							app.use(function *(){
+							  // 最后一个中间件，将body写成'Hello World'
+							  this.body = 'Hello World';
 							});
 						```
 						
@@ -169,10 +198,11 @@
 						    // yield next
 						    middleware3{
 						       // no next yield! 
+						       // this.body = 'hello world'
 						    }
-						    // do middleware2 left
+						    // middleware2 left
 						 }
-						 // do middleware1 left
+						 // middleware1 left
 						}
 						```
 
@@ -186,13 +216,13 @@
 					<script type="text/template">
 						### 代码结构
 						
-						- application.js：Application(或Koa)负责管理中间件，以及处理请求
+						- application.js：Application (或 Koa)负责管理中间件，以及处理请求
 
-						- context.js：Context维护了一个请求的上下文环境
+						- context.js：Context 维护了一个请求的上下文环境
 
-						- request.js：Request对`req`做了抽象和封装
+						- request.js：Request 对`req`做了抽象和封装
 
-						- response.js：Response对`res`做了抽象和封装
+						- response.js：Response 对`res`做了抽象和封装
 					</script>
 				</section>
 				<section id="menu2" data-markdown>
@@ -208,7 +238,7 @@
 						
 						- 日志记录： [koa-bunyan](https://github.com/ivpusic/koa-bunyan) or [koa-logger](https://github.com/koajs/logger)
 
-						- 压缩中间件：[koa-compress](https://github.com/koajs/compress)
+						- 压缩中间件/数据压缩：[koa-compress](https://github.com/koajs/compress)
 
 						- 解析 http 请求体：[koa-body](https://github.com/dlau/koa-body)
 
@@ -235,6 +265,8 @@
 						### 参考资料
 
 						[Koa wiki](https://github.com/koajs/koa/wiki)
+
+						[Koa 框架参考教程](http://javascript.ruanyifeng.com/nodejs/koa.html)
 					</script>
 				</section>
 			</div>
